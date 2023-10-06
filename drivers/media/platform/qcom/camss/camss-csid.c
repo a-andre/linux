@@ -308,7 +308,7 @@ static void csid_try_format(struct csid_device *csid,
 
 		/* If not found, use UYVY as default */
 		if (i >= csid->nformats)
-			fmt->code = MEDIA_BUS_FMT_UYVY8_2X8;
+			fmt->code = MEDIA_BUS_FMT_UYVY8_1X16;
 
 		fmt->width = clamp_t(u32, fmt->width, 1, 8191);
 		fmt->height = clamp_t(u32, fmt->height, 1, 8191);
@@ -337,7 +337,7 @@ static void csid_try_format(struct csid_device *csid,
 
 			/* If not found, use UYVY as default */
 			if (i >= csid->nformats)
-				fmt->code = MEDIA_BUS_FMT_UYVY8_2X8;
+				fmt->code = MEDIA_BUS_FMT_UYVY8_1X16;
 
 			fmt->width = clamp_t(u32, fmt->width, 1, 8191);
 			fmt->height = clamp_t(u32, fmt->height, 1, 8191);
@@ -504,7 +504,7 @@ static int csid_init_formats(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 		.which = fh ? V4L2_SUBDEV_FORMAT_TRY :
 			      V4L2_SUBDEV_FORMAT_ACTIVE,
 		.format = {
-			.code = MEDIA_BUS_FMT_UYVY8_2X8,
+			.code = MEDIA_BUS_FMT_UYVY8_1X16,
 			.width = 1920,
 			.height = 1080
 		}
