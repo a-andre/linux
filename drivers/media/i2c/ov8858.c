@@ -1867,6 +1867,8 @@ static int ov8858_parse_of(struct ov8858 *ov8858)
 		return -EINVAL;
 	}
 
+	fwnode_handle_put(endpoint);
+
 	return 0;
 }
 
