@@ -700,6 +700,7 @@ static int imx214_ctrls_init(struct imx214 *imx214)
 		.width = 1120,
 		.height = 1120,
 	};
+	struct v4l2_fwnode_device_properties props;
 	struct v4l2_ctrl_handler *ctrl_hdlr;
 	int ret;
 
@@ -742,6 +743,18 @@ static int imx214_ctrls_init(struct imx214 *imx214)
 	if (ret) {
 		v4l2_ctrl_handler_free(ctrl_hdlr);
 		return dev_err_probe(imx214->dev, ret, "failed to add controls\n");
+	}
+
+	ret = v4l2_fwnode_device_parse(imx214->dev, &props);
+	if (ret) {
+		v4l2_ctrl_handler_free(ctrl_hdlr);
+		return ret;
+	}
+
+	ret = v4l2_ctrl_new_fwnode_properties(ctrl_hdlr, &imx214_ctrl_ops, &props);
+	if (ret) {
+		v4l2_ctrl_handler_free(ctrl_hdlr);
+		return ret;
 	}
 
 	imx214->sd.ctrl_handler = &imx214->ctrls;
