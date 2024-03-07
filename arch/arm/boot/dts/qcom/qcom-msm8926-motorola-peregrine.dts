@@ -8,7 +8,7 @@
 /delete-node/ &smem_region;
 
 / {
-	model = "Motorola Moto G 4G";
+	model = "Motorola Moto G 4G (2013)";
 	compatible = "motorola,peregrine", "qcom,msm8926", "qcom,msm8226";
 	chassis-type = "handset";
 
@@ -22,8 +22,6 @@
 		#size-cells = <1>;
 		ranges;
 
-		stdout-path = "display0";
-
 		framebuffer0: framebuffer@3200000 {
 			compatible = "simple-framebuffer";
 			reg = <0x03200000 0x800000>;
@@ -34,10 +32,8 @@
 		};
 	};
 
-	gpio-hall-sensor {
+	gpio-keys {
 		compatible = "gpio-keys";
-
-		label = "GPIO Hall Effect Sensor";
 
 		event-hall-sensor {
 			label = "Hall Effect Sensor";
@@ -46,10 +42,6 @@
 			linux,code = <SW_LID>;
 			linux,can-disable;
 		};
-	};
-
-	gpio-keys {
-		compatible = "gpio-keys";
 
 		key-volume-up {
 			label = "Volume Up";
