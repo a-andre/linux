@@ -359,7 +359,7 @@
 		port {
 			imx214_ep: endpoint {
 				data-lanes = <1 2 3 4>;
-				link-frequencies = /bits/ 64 <243200000>;
+				link-frequencies = /bits/ 64 <480000000>;
 				remote-endpoint = <&csiphy0_ep>;
 			};
 		};
