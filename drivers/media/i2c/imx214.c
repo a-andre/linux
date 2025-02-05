@@ -260,6 +260,7 @@ static const int imx214_test_pattern_val[] = {
 struct imx214 {
 	struct device *dev;
 	struct clk *xclk;
+	u32 xclk_freq;
 	struct regmap *regmap;
 
 	struct v4l2_subdev sd;
@@ -311,9 +312,6 @@ static const struct cci_reg_sequence mode_4096x2304[] = {
 	{ IMX214_REG_DIG_CROP_Y_OFFSET, 0 },
 	{ IMX214_REG_DIG_CROP_WIDTH, 4096 },
 	{ IMX214_REG_DIG_CROP_HEIGHT, 2304 },
-
-	{ IMX214_REG_REQ_LINK_BIT_RATE,
-		IMX214_LINK_BIT_RATE_MBPS(IMX214_LINK_BIT_RATE(IMX214_DEFAULT_CLK_FREQ)) },
 
 	{ CCI_REG8(0x3A03), 0x09 },
 	{ CCI_REG8(0x3A04), 0x50 },
@@ -367,9 +365,6 @@ static const struct cci_reg_sequence mode_1920x1080[] = {
 	{ IMX214_REG_DIG_CROP_Y_OFFSET, 0 },
 	{ IMX214_REG_DIG_CROP_WIDTH, 1920 },
 	{ IMX214_REG_DIG_CROP_HEIGHT, 1080 },
-
-	{ IMX214_REG_REQ_LINK_BIT_RATE,
-		IMX214_LINK_BIT_RATE_MBPS(IMX214_LINK_BIT_RATE(IMX214_DEFAULT_CLK_FREQ)) },
 
 	{ CCI_REG8(0x3A03), 0x04 },
 	{ CCI_REG8(0x3A04), 0xF8 },
@@ -1029,6 +1024,7 @@ static int imx214_start_streaming(struct imx214 *imx214)
 	const struct v4l2_mbus_framefmt *fmt;
 	struct v4l2_subdev_state *state;
 	const struct imx214_mode *mode;
+	int link_bit_rate;
 	int ret;
 
 	ret = cci_multi_reg_write(imx214->regmap, mode_table_common,
@@ -1041,6 +1037,14 @@ static int imx214_start_streaming(struct imx214 *imx214)
 	ret = imx214_set_clock(imx214);
 	if (ret) {
 		dev_err(imx214->dev, "failed to configure clock %d\n", ret);
+		return ret;
+	}
+
+	link_bit_rate = IMX214_LINK_BIT_RATE(imx214->xclk_freq);
+	ret = cci_write(imx214->regmap, IMX214_REG_REQ_LINK_BIT_RATE,
+			IMX214_LINK_BIT_RATE_MBPS(link_bit_rate), NULL);
+	if (ret) {
+		dev_err(imx214->dev, "failed to configure link bit rate\n");
 		return ret;
 	}
 
@@ -1300,7 +1304,14 @@ static int imx214_probe(struct i2c_client *client)
 		return dev_err_probe(dev, PTR_ERR(imx214->xclk),
 				     "failed to get xclk\n");
 
-	ret = clk_set_rate(imx214->xclk, IMX214_DEFAULT_CLK_FREQ);
+	ret = device_property_read_u32(dev, "clock-frequency", &imx214->xclk_freq);
+	if (ret) {
+		dev_warn(dev,
+			 "clock-frequency not set, please review your DT. Fallback to default\n");
+		imx214->xclk_freq = IMX214_DEFAULT_CLK_FREQ;
+	}
+
+	ret = clk_set_rate(imx214->xclk, imx214->xclk_freq);
 	if (ret)
 		return dev_err_probe(dev, ret,
 				     "failed to set xclk frequency\n");
