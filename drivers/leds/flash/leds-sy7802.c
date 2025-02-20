@@ -14,6 +14,8 @@
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 
+#include <media/v4l2-flash-led-class.h>
+
 #define SY7802_MAX_LEDS 2
 #define SY7802_LED_JOINT 2
 
@@ -63,6 +65,11 @@
 #define SY7802_FLASH_BRIGHTNESS_MAX	15
 #define SY7802_FLASH_BRIGHTNESS_STEP	1
 
+#define SY7802_FLASH_INTENSITY_DEFAULT_mA	840
+#define SY7802_FLASH_INTENSITY_MIN_mA		0
+#define SY7802_FLASH_INTENSITY_MAX_mA		900
+#define SY7802_FLASH_INTENSITY_STEP_mA		60
+
 #define SY7802_FLAG_TIMEOUT			BIT(0)
 #define SY7802_FLAG_THERMAL_SHUTDOWN		BIT(1)
 #define SY7802_FLAG_LED_FAULT			BIT(2)
@@ -87,6 +94,8 @@ static const struct reg_default sy7802_regmap_defs[] = {
 
 struct sy7802_led {
 	struct led_classdev_flash flash;
+	struct v4l2_flash *v4l2_flash;
+
 	struct sy7802 *chip;
 	u8 led_id;
 };
@@ -314,9 +323,36 @@ static void sy7802_init_flash_timeout(struct led_classdev_flash *fl_cdev)
 	s->val = SY7802_TIMEOUT_DEFAULT_US;
 }
 
+#if IS_ENABLED(CONFIG_V4L2_FLASH_LED_CLASS)
+static void sy7802_init_v4l2_flash_config(struct sy7802_led *led, struct v4l2_flash_config *cfg)
+{
+	struct led_flash_setting *s;
+	struct led_classdev *lcdev;
+	int num_leds;
+
+	lcdev = &led->flash.led_cdev;
+
+	strscpy(cfg->dev_name, lcdev->dev->kobj.name,
+		sizeof(cfg->dev_name));
+
+	num_leds = led->led_id == SY7802_LED_JOINT ? 2 : 1;
+	/* Init flash intensity setting */
+	s = &cfg->intensity;
+	s->min = SY7802_FLASH_INTENSITY_MIN_mA;
+	s->max = SY7802_FLASH_INTENSITY_MAX_mA * num_leds;
+	s->step = SY7802_FLASH_INTENSITY_STEP_mA * num_leds;
+	s->val = SY7802_FLASH_INTENSITY_DEFAULT_mA * num_leds;
+}
+#else
+static void sy7802_init_v4l2_flash_config(struct sy7802_led *led, struct v4l2_flash_config *cfg)
+{
+}
+#endif
+
 static int sy7802_led_register(struct device *dev, struct sy7802_led *led,
 			       struct device_node *np)
 {
+	struct v4l2_flash_config v4l2_config = {};
 	struct led_init_data init_data = {};
 	int ret;
 
@@ -326,6 +362,14 @@ static int sy7802_led_register(struct device *dev, struct sy7802_led *led,
 	if (ret) {
 		dev_err(dev, "Couldn't register flash %d\n", led->led_id);
 		return ret;
+	}
+
+	sy7802_init_v4l2_flash_config(led, &v4l2_config);
+	led->v4l2_flash = v4l2_flash_init(dev, init_data.fwnode, &led->flash,
+					  NULL, &v4l2_config);
+	if (IS_ERR(led->v4l2_flash)) {
+		dev_err(dev, "Couldn't register %d v4l2 sd\n", led->led_id);
+		return PTR_ERR(led->v4l2_flash);
 	}
 
 	return 0;
@@ -457,6 +501,7 @@ static int sy7802_probe(struct i2c_client *client)
 	struct sy7802 *chip;
 	size_t count;
 	int ret;
+	int i;
 
 	count = device_get_child_node_count(dev);
 	if (!count || count > SY7802_MAX_LEDS)
@@ -504,22 +549,38 @@ static int sy7802_probe(struct i2c_client *client)
 
 	ret = sy7802_probe_dt(chip);
 	if (ret < 0)
-		goto error;
+		goto init_error;
 
 	sy7802_enable(chip);
 
 	ret = devm_add_action_or_reset(dev, sy7802_chip_disable_action, chip);
 	if (ret)
-		goto error;
+		goto init_error;
 
 	ret = sy7802_chip_check(chip);
 
+init_error:
+	for (i = 0; i < chip->num_leds; i++) {
+		v4l2_flash_release(chip->leds[i].v4l2_flash);
+		led_classdev_flash_unregister(&chip->leds[i].flash);
+	}
 error:
 	mutex_unlock(&chip->mutex);
 	return ret;
 }
 
-static const struct of_device_id __maybe_unused sy7802_leds_match[] = {
+static void sy7802_remove(struct i2c_client *client)
+{
+	struct sy7802 *chip = i2c_get_clientdata(client);
+	int i;
+
+	for (i = 0; i < chip->num_leds; i++) {
+		v4l2_flash_release(chip->leds[i].v4l2_flash);
+		led_classdev_flash_unregister(&chip->leds[i].flash);
+	}
+}
+
+static const struct of_device_id sy7802_leds_match[] = {
 	{ .compatible = "silergy,sy7802", },
 	{}
 };
@@ -528,9 +589,10 @@ MODULE_DEVICE_TABLE(of, sy7802_leds_match);
 static struct i2c_driver sy7802_driver = {
 	.driver = {
 		.name = "sy7802",
-		.of_match_table = of_match_ptr(sy7802_leds_match),
+		.of_match_table = sy7802_leds_match,
 	},
 	.probe = sy7802_probe,
+	.remove = sy7802_remove,
 };
 module_i2c_driver(sy7802_driver);
 
