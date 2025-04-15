@@ -32,7 +32,6 @@
 
 #define IMX214_REG_FAST_STANDBY_CTRL	CCI_REG8(0x0106)
 
-#define IMX214_DEFAULT_CLK_FREQ	24000000
 #define IMX214_DEFAULT_LINK_FREQ	600000000
 /* Keep wrong link frequency for backward compatibility */
 #define IMX214_DEFAULT_LINK_FREQ_LEGACY	480000000
@@ -1389,6 +1388,7 @@ static int imx214_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	struct imx214 *imx214;
+	u32 xclk_freq;
 	int ret;
 
 	imx214 = devm_kzalloc(dev, sizeof(*imx214), GFP_KERNEL);
@@ -1402,10 +1402,14 @@ static int imx214_probe(struct i2c_client *client)
 		return dev_err_probe(dev, PTR_ERR(imx214->xclk),
 				     "failed to get xclk\n");
 
-	ret = clk_set_rate(imx214->xclk, IMX214_DEFAULT_CLK_FREQ);
-	if (ret)
-		return dev_err_probe(dev, ret,
-				     "failed to set xclk frequency\n");
+	if (device_property_read_u32(dev, "clock-frequency", &xclk_freq) == 0) {
+		dev_warn(dev,
+			"clock-frequency is deprecated, please use assigned-clock-rates\n");
+		ret = clk_set_rate(imx214->xclk, xclk_freq);
+		if (ret)
+			return dev_err_probe(dev, ret,
+					     "failed to set xclk frequency\n");
+	}
 
 	ret = imx214_get_regulators(dev, imx214);
 	if (ret < 0)
