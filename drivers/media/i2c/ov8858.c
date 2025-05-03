@@ -1882,6 +1882,11 @@ static int ov8858_probe(struct i2c_client *client)
 		return dev_err_probe(dev, PTR_ERR(ov8858->xvclk),
 				     "Failed to get xvclk\n");
 
+	ret = clk_set_rate(ov8858->xvclk, OV8858_XVCLK_FREQ);
+	if (ret)
+		return dev_err_probe(dev, ret,
+				     "Failed to set xvclk frequency\n");
+
 	ov8858->reset_gpio = devm_gpiod_get_optional(dev, "reset",
 						     GPIOD_OUT_HIGH);
 	if (IS_ERR(ov8858->reset_gpio))
