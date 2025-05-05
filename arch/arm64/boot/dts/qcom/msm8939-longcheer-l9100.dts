@@ -347,8 +347,11 @@
 		vddd-supply = <&cam_vdig_rear_vreg>;
 		vdddo-supply = <&pm8916_l6>;
 		enable-gpios = <&tlmm 35 GPIO_ACTIVE_HIGH>;
+
 		clocks = <&gcc GCC_CAMSS_MCLK0_CLK>;
-		clock-frequency = <24000000>;
+		assigned-clocks = <&gcc GCC_CAMSS_MCLK0_CLK>;
+		assigned-clock-rates = <24000000>;
+
 		pinctrl-0 = <&camera_rear_default>;
 		pinctrl-names = "default";
 
