@@ -33,6 +33,7 @@ properties:
 
   clock-frequency:
     description: Frequency of the xclk clock in Hz.
+    deprecated: true
 
   enable-gpios:
     description: GPIO descriptor for the enable pin.
@@ -84,7 +85,6 @@ required:
   - compatible
   - reg
   - clocks
-  - clock-frequency
   - enable-gpios
   - vdddo-supply
   - vdda-supply
@@ -104,18 +104,23 @@ examples:
         camera-sensor@1a {
             compatible = "sony,imx214";
             reg = <0x1a>;
+
+            clocks = <&camera_clk>;
+            assigned-clocks = <&camera_clk>;
+            assigned-clock-rates = <24000000>;
+
             vdddo-supply = <&pm8994_lvs1>;
             vddd-supply = <&camera_vddd_1v12>;
             vdda-supply = <&pm8994_l17>;
-            lens-focus = <&ad5820>;
+
             enable-gpios = <&msmgpio 25 GPIO_ACTIVE_HIGH>;
-            clocks = <&camera_clk>;
-            clock-frequency = <24000000>;
+
+            lens-focus = <&ad5820>;
 
             port {
                 imx214_ep: endpoint {
                     data-lanes = <1 2 3 4>;
-                    link-frequencies = /bits/ 64 <480000000>;
+                    link-frequencies = /bits/ 64 <600000000>;
                     remote-endpoint = <&csiphy0_ep>;
                 };
             };
