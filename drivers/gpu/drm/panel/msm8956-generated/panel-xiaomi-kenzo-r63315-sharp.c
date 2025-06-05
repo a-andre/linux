@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (c) 2024 FIXME
+// Copyright (c) 2025 FIXME
 // Generated with linux-mdss-dsi-panel-driver-generator from vendor device tree:
 //   Copyright (c) 2013, The Linux Foundation. All rights reserved. (FIXME)
 
@@ -202,6 +202,7 @@ static int sharp_r63315_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_init(&ctx->panel, dev, &sharp_r63315_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
+	ctx->panel.prepare_prev_first = true;
 
 	ret = drm_panel_of_backlight(&ctx->panel);
 	if (ret)
