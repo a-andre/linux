@@ -1522,26 +1522,17 @@
 			interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&gcc GCC_VENUS0_VCODEC0_CLK>,
 				 <&gcc GCC_VENUS0_AHB_CLK>,
-				 <&gcc GCC_VENUS0_AXI_CLK>;
-			clock-names = "core", "iface", "bus";
-			power-domains = <&gcc VENUS_GDSC>;
+				 <&gcc GCC_VENUS0_AXI_CLK>,
+				 <&gcc GCC_VENUS0_CORE0_VCODEC0_CLK>,
+				 <&gcc GCC_VENUS0_CORE1_VCODEC0_CLK>;
+			clock-names = "core", "iface", "bus", "core0", "core1";
+			power-domains = <&gcc VENUS_GDSC>,
+				 <&gcc VENUS_CORE0_GDSC>,
+				 <&gcc VENUS_CORE1_GDSC>;
+			power-domain-names = "venus", "core0", "core1";
 			iommus = <&apps_iommu 5>;
 			memory-region = <&venus_mem>;
 			status = "disabled";
-
-			video-decoder {
-				compatible = "venus-decoder";
-				clocks = <&gcc GCC_VENUS0_CORE0_VCODEC0_CLK>;
-				clock-names = "core";
-				power-domains = <&gcc VENUS_CORE0_GDSC>;
-			};
-
-			video-encoder {
-				compatible = "venus-encoder";
-				clocks = <&gcc GCC_VENUS0_CORE1_VCODEC0_CLK>;
-				clock-names = "core";
-				power-domains = <&gcc VENUS_CORE1_GDSC>;
-			};
 		};
 
 		apps_iommu: iommu@1ef0000 {
