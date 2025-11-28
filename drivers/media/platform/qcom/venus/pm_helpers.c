@@ -4,6 +4,7 @@
  *
  * Author: Stanimir Varbanov <stanimir.varbanov@linaro.org>
  */
+#include "linux/err.h"
 #include <linux/clk.h>
 #include <linux/interconnect.h>
 #include <linux/iopoll.h>
@@ -23,16 +24,16 @@
 
 static bool legacy_binding;
 
-static int core_clks_get(struct venus_core *core)
+static int core_clks_get(struct venus_core *core, struct clk **clks,
+			 const char * const *id, unsigned int count)
 {
-	const struct venus_resources *res = core->res;
 	struct device *dev = core->dev;
 	unsigned int i;
 
-	for (i = 0; i < res->clks_num; i++) {
-		core->clks[i] = devm_clk_get(dev, res->clks[i]);
-		if (IS_ERR(core->clks[i]))
-			return PTR_ERR(core->clks[i]);
+	for (i = 0; i < count; i++) {
+		clks[i] = devm_clk_get(dev, id[i]);
+		if (IS_ERR(clks[i]))
+			return PTR_ERR(clks[i]);
 	}
 
 	return 0;
@@ -297,19 +298,114 @@ exit:
 	return ret;
 }
 
-static int core_get_v1(struct venus_core *core)
+static int vcodec_domains_get(struct venus_core *core)
 {
 	int ret;
+	struct device *dev = core->dev;
+	const struct venus_resources *res = core->res;
+	struct dev_pm_domain_attach_data vcodec_data = {
+		.pd_names = res->vcodec_pmdomains,
+		.num_pd_names = res->vcodec_pmdomains_num,
+		.pd_flags = PD_FLAG_NO_DEV_LINK,
+	};
+	struct dev_pm_domain_attach_data opp_pd_data = {
+		.pd_names = res->opp_pmdomain,
+		.num_pd_names = 1,
+		.pd_flags = PD_FLAG_DEV_LINK_ON | PD_FLAG_REQUIRED_OPP,
+	};
 
-	ret = core_clks_get(core);
-	if (ret)
+	if (!res->vcodec_pmdomains_num)
+		goto skip_pmdomains;
+
+	ret = devm_pm_domain_attach_list(dev, &vcodec_data, &core->pmdomains);
+	if (ret < 0)
 		return ret;
 
-	ret = devm_pm_opp_set_clkname(core->dev, "core");
-	if (ret)
+skip_pmdomains:
+	if (!res->opp_pmdomain)
+		return 0;
+
+	/* Attach the power domain for setting performance state */
+	ret = devm_pm_domain_attach_list(dev, &opp_pd_data, &core->opp_pmdomain);
+	if (ret < 0)
 		return ret;
 
 	return 0;
+}
+
+static int core_get_v1(struct venus_core *core)
+{
+	struct device *dev = core->dev;
+	const struct venus_resources *res = core->res;
+	int ret;
+
+	ret = core_clks_get(core, core->clks, res->clks, res->clks_num);
+	if (ret)
+		return ret;
+
+	ret = core_clks_get(core, core->vcodec0_clks, res->vcodec0_clks, res->vcodec_clks_num);
+	if (ret)
+		return ret;
+
+	ret = devm_pm_opp_set_clkname(dev, "core");
+	if (ret)
+		return ret;
+
+	if (!res->vcodec_pmdomains_num)
+		goto skip_pmdomains;
+
+	ret = vcodec_domains_get(core);
+	if (ret)
+		return ret;
+
+skip_pmdomains:
+	return 0;
+}
+
+static int poweron_cores_v1(struct venus_core *core)
+{
+	const struct venus_resources *res = core->res;
+	struct dev_pm_domain_list *pmdomains = core->pmdomains;
+	int ret, i, core_idx;
+
+	if (!pmdomains)
+		return 0;
+
+	for (i = 1; i < res->vcodec_pmdomains_num; i++) {
+		ret = pm_runtime_resume_and_get(pmdomains->pd_devs[i]);
+		if (ret < 0)
+			goto err;
+
+		core_idx = i - 1;
+		ret = clk_prepare_enable(core->vcodec0_clks[core_idx]);
+
+		if (ret < 0) 
+			goto err;
+	}
+
+	return 0;
+
+err:
+	while (core_idx--)
+		clk_disable_unprepare(core->vcodec0_clks[core_idx]);
+
+	while (i-- != 1)
+		pm_runtime_put_sync(core->pmdomains->pd_devs[i]);
+
+	return ret;
+}
+
+static int poweroff_cores_v1(struct venus_core *core)
+{
+	int ret = 0;
+
+	for (int i = 1; i < core->res->vcodec_pmdomains_num; i++) {
+		int core_idx = i - 1;
+		clk_disable_unprepare(core->vcodec0_clks[core_idx]);
+		pm_runtime_put_sync(core->pmdomains->pd_devs[i]);;
+	}
+
+	return ret;
 }
 
 static void core_put_v1(struct venus_core *core)
@@ -318,12 +414,34 @@ static void core_put_v1(struct venus_core *core)
 
 static int core_power_v1(struct venus_core *core, int on)
 {
-	int ret = 0;
+	struct device *pmctrl = core->pmdomains ?
+		core->pmdomains->pd_devs[0] : NULL;
 
-	if (on == POWER_ON)
+	int ret = 0;
+	if (on == POWER_ON) {
+		if (pmctrl) {
+			ret = pm_runtime_resume_and_get(pmctrl);
+			if (ret < 0)
+				return ret;
+		}
+
 		ret = core_clks_enable(core);
-	else
+		if (ret < 0 && pmctrl)
+			pm_runtime_put_sync(pmctrl);
+
+		ret = poweron_cores_v1(core);
+		if (ret < 0)
+			return ret;
+	}
+	else {
+		ret = poweroff_cores_v1(core);
+		if (ret < 0)
+			return ret;
+
 		core_clks_disable(core);
+		if (pmctrl)
+			pm_runtime_put_sync(pmctrl);
+	}
 
 	return ret;
 }
@@ -875,41 +993,6 @@ static int venc_power_v4(struct device *dev, int on)
 	return ret;
 }
 
-static int vcodec_domains_get(struct venus_core *core)
-{
-	int ret;
-	struct device *dev = core->dev;
-	const struct venus_resources *res = core->res;
-	struct dev_pm_domain_attach_data vcodec_data = {
-		.pd_names = res->vcodec_pmdomains,
-		.num_pd_names = res->vcodec_pmdomains_num,
-		.pd_flags = PD_FLAG_NO_DEV_LINK,
-	};
-	struct dev_pm_domain_attach_data opp_pd_data = {
-		.pd_names = res->opp_pmdomain,
-		.num_pd_names = 1,
-		.pd_flags = PD_FLAG_DEV_LINK_ON | PD_FLAG_REQUIRED_OPP,
-	};
-
-	if (!res->vcodec_pmdomains_num)
-		goto skip_pmdomains;
-
-	ret = devm_pm_domain_attach_list(dev, &vcodec_data, &core->pmdomains);
-	if (ret < 0)
-		return ret;
-
-skip_pmdomains:
-	if (!res->opp_pmdomain)
-		return 0;
-
-	/* Attach the power domain for setting performance state */
-	ret = devm_pm_domain_attach_list(dev, &opp_pd_data, &core->opp_pmdomain);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
 static int core_resets_reset(struct venus_core *core)
 {
 	const struct venus_resources *res = core->res;
@@ -965,7 +1048,7 @@ static int core_get_v4(struct venus_core *core)
 	unsigned int i;
 	int ret;
 
-	ret = core_clks_get(core);
+	ret = core_clks_get(core, core->clks, res->clks, res->clks_num);
 	if (ret)
 		return ret;
 

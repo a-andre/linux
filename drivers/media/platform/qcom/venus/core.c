@@ -712,9 +712,10 @@ static const struct venus_resources msm8939_res = {
 	.reg_tbl_size = ARRAY_SIZE(msm8939_reg_preset),
 	.clks = { "core", "iface", "bus", },
 	.clks_num = 3,
-	.vcodec0_clks = { "core" },
-	.vcodec1_clks = { "core" },
-	.vcodec_clks_num = 1,
+	.vcodec0_clks = { "core0", "core1" },
+	.vcodec_clks_num = 2,
+	.vcodec_pmdomains = (const char *[]) { "venus", "core0", "core1", },
+	.vcodec_pmdomains_num = 3,
 	.max_load = 489600, /* 1080p@30 + 1080p@30 */
 	.hfi_version = HFI_VERSION_1XX,
 	.vmem_id = VIDC_RESOURCE_NONE,
@@ -722,6 +723,8 @@ static const struct venus_resources msm8939_res = {
 	.vmem_addr = 0,
 	.dma_mask = 0xddc00000 - 1,
 	.fwname = "qcom/venus-1.8/venus.mbn",
+	.dec_nodename = "video-decoder",
+	.enc_nodename = "video-encoder",
 };
 
 static const struct freq_tbl msm8996_freq_table[] = {
